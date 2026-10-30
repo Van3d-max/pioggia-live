@@ -1,0 +1,6 @@
+{
+  "appId": "it.abovefpv.pioggialive",
+  "appName": "Pioggia Live",
+  "webDir": "www",
+  "android": { "backgroundColor": "#0b1622" }
+}

@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1622">
+<title>Pioggia Live</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: due viste a tutto schermo (pioggia animata / mappa radar), barra in alto condivisa */
+:root{
+  --sky-top:#0b1622; --ink:#e6eef5; --muted:#8fa3b5;
+  --accent:#5fb4ff; --panel:rgba(10,20,30,.72); --line:rgba(169,200,230,.2);
+  --f-display:"Fraunces",Georgia,serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--sky-top);color:var(--ink);font:15px/1.45 var(--f-mono);overflow:hidden}
+#sky,#map{position:fixed;inset:0;width:100%;height:100%}
+#map{background:#dfe6ec}
+body[data-view="rain"] #map{visibility:hidden}
+body[data-view="map"] #sky{visibility:hidden}
+.ui{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:space-between;gap:12px;
+  padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
+  pointer-events:none;z-index:1000}
+.ui>*{pointer-events:auto}
+.glass{background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:14px;padding:12px}
+.top{display:grid;gap:10px;max-width:560px;width:100%}
+.head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.place{font-family:var(--f-display);font-weight:300;font-size:clamp(20px,5.5vw,30px);line-height:1.1;text-wrap:balance}
+.sub{color:var(--muted);font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin-top:4px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.tabs button{border:0;border-radius:0;padding:8px}
+.tabs button[aria-pressed="true"]{background:var(--accent);color:#06121e;font-weight:500}
+.row{display:flex;gap:8px;align-items:center}
+button,input{font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input{flex:1;min-width:0}
+.msg{color:var(--muted);font-size:12px;min-height:1em}
+.msg:empty{display:none}
+
+.bottom{max-width:560px;width:100%;display:grid;gap:12px}
+body[data-view="map"] .rainonly, body[data-view="rain"] .maponly{display:none}
+.big{font-family:var(--f-display);font-weight:600;font-size:clamp(52px,16vw,110px);line-height:.9;font-variant-numeric:tabular-nums}
+.big small{font-family:var(--f-mono);font-size:15px;font-weight:400;color:var(--muted);margin-left:6px}
+.state{font-size:14px;color:var(--accent);margin-top:6px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stats div{display:flex;flex-direction:column}
+.stats b{font-weight:500;font-variant-numeric:tabular-nums}
+.stats span{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.bars{display:flex;align-items:flex-end;gap:3px;height:52px;border-bottom:1px solid var(--line)}
+.bars i{flex:1;background:var(--accent);border-radius:2px 2px 0 0;min-height:1px;opacity:.85}
+.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:11px}
+.src{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-left:8px}
+details.cmp summary{cursor:pointer;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.srcs{display:grid;gap:4px;margin-top:8px;font-size:12px}
+.srcs div{display:grid;grid-template-columns:1fr auto;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)}
+.srcs b{font-weight:500;font-variant-numeric:tabular-nums;text-align:right}
+.srcs .used{color:var(--accent)}
+.srcs .off{color:var(--muted)}
+.warn{color:#ffcf5c;font-size:12px}
+.warn:empty{display:none}
+.links{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.links a{color:var(--accent);font-size:12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+
+.radar{display:grid;gap:8px}
+.radar input[type=range]{padding:0;border:0;accent-color:var(--accent)}
+.legend{height:8px;border-radius:4px;background:linear-gradient(90deg,#9be7ff,#3fa9f5,#1565c0,#ffe14d,#ff8c1a,#e53935,#b0127a)}
+.legend-l{display:flex;justify-content:space-between;color:var(--muted);font-size:11px}
+.when{font-variant-numeric:tabular-nums}
+.leaflet-control-attribution{font-size:10px}
+.leaflet-bottom.leaflet-right{bottom:190px}
+@media (max-width:420px){.stats{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body data-view="rain">
+<div id="map"></div>
+<canvas id="sky"></canvas>
+
+<div class="ui">
+  <section class="glass top">
+    <div class="head">
+      <div>
+        <div class="place" id="place">Ricerca posizione…</div>
+        <div class="sub" id="updated">—</div>
+      </div>
+      <div class="row">
+        <button id="gps" title="Usa la mia posizione" aria-label="Usa la mia posizione">◎</button>
+        <button id="refresh" title="Aggiorna" aria-label="Aggiorna">↻</button>
+      </div>
+    </div>
+    <form class="row" id="searchForm">
+      <input id="city" placeholder="CAP o città (es. 37132, Verona)" autocomplete="off" inputmode="search">
+      <button type="submit">Cerca</button>
+    </form>
+    <div class="msg" id="msg"></div>
+    <div class="tabs" role="group" aria-label="Vista">
+      <button id="tabRain" aria-pressed="true">Pioggia</button>
+      <button id="tabMap" aria-pressed="false">Mappa radar</button>
+    </div>
+  </section>
+
+  <section class="glass bottom">
+    <!-- Vista pioggia -->
+    <div class="rainonly">
+      <div class="big"><span id="mm">–</span><small>mm/h</small></div>
+      <div class="state" id="label">In attesa dei dati</div>
+    </div>
+    <div class="stats rainonly">
+      <div><b id="temp">–</b><span>Temp.</span></div>
+      <div><b id="wind">–</b><span>Vento</span></div>
+      <div><b id="cloud">–</b><span>Nuvole</span></div>
+      <div><b id="next">–</b><span>Prossime 2h</span></div>
+    </div>
+    <div class="rainonly">
+      <div class="bars" id="bars"></div>
+      <div class="axis"><span>ora</span><span>+1h</span><span>+2h</span><span>+3h</span><span>+4h</span></div>
+    </div>
+    <div class="warn rainonly" id="warn"></div>
+    <details class="cmp rainonly">
+      <summary>Confronto fonti</summary>
+      <div class="srcs" id="srcs"></div>
+      <div class="links">
+        <a id="l3b" href="https://www.3bmeteo.com" target="_blank" rel="noopener">Apri su 3bMeteo</a>
+        <a href="https://radar.protezionecivile.it" target="_blank" rel="noopener">Radar Protezione Civile</a>
+      </div>
+    </details>
+
+    <!-- Vista mappa -->
+    <div class="radar maponly">
+      <div class="row" style="justify-content:space-between">
+        <span class="when" id="when">Radar in caricamento…</span>
+        <span class="row">
+          <button id="radarBtn" aria-label="Cambia radar">Prot. Civile</button>
+          <button id="layerBtn" aria-label="Cambia mappa">Satellite</button>
+          <button id="play" aria-label="Riproduci">▶</button>
+        </span>
+      </div>
+      <input type="range" id="frame" min="0" max="0" value="0" aria-label="Momento del radar" hidden>
+      <div class="legend"></div>
+      <div class="legend-l"><span>debole</span><span>moderata</span><span>forte</span><span>molto forte</span></div>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/* ===== Configurazione ===== */
+const REFRESH_MIN = 5;          // aggiornamento dati e radar (minuti)
+const COUNTRY = "it";            // paese predefinito per CAP e città
+const API   = "https://api.open-meteo.com/v1/forecast";
+const GEO   = "https://geocoding-api.open-meteo.com/v1/search";
+const NOMI  = "https://nominatim.openstreetmap.org/search";
+const REV   = "https://api.bigdatacloud.net/data/reverse-geocode-client";
+const RV    = "https://api.rainviewer.com/public/weather-maps.json";
+const DPC_WMS = "https://radar-geowebcache.protezionecivile.it/service/wms";
+const DPC_API = "https://radar-api.protezionecivile.it/findLastProductByType?type=SRI";
+
+/* Fonti in ordine di priorità: i radar osservati prima dei modelli */
+const SOURCES = [
+  {id:"dpc", name:"Protezione Civile · radar nazionale", kind:"radar"},
+  {id:"rv",  name:"RainViewer · radar",                   kind:"radar"},
+  {id:"i2i", name:"ItaliaMeteo ICON-2I · modello",        kind:"modello"},
+  {id:"om",  name:"Open-Meteo · modello",                 kind:"modello"}
+];
+const val = {};                  // id → mm/h, oppure null se la fonte non risponde
+
+const $ = id => document.getElementById(id);
+let pos = null, live = {mm:0, src:"", wind:0, windDir:0, cloud:0}, timer = null, lastNext = null, lastC = null;
+const say = t => $("msg").textContent = t || "";
+
+/* ===== Utilità ===== */
+function describe(mm){
+  if (mm <= 0) return "Nessuna pioggia";
+  if (mm < 0.5) return "Pioviggine";
+  if (mm < 2.5) return "Pioggia debole";
+  if (mm < 7.6) return "Pioggia moderata";
+  if (mm < 15) return "Pioggia forte";
+  if (mm < 50) return "Rovescio intenso";
+  return "Nubifragio";
+}
+const dirName = d => ["N","NE","E","SE","S","SO","O","NO"][Math.round(d/45)%8];
+const dbzToMm = dbz => dbz <= 5 ? 0 : Math.pow(Math.pow(10, dbz/10) / 200, 1/1.6);   // Marshall-Palmer
+const slug = s => s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+async function getJSON(url, opt){ const r = await fetch(url, opt); if (!r.ok) throw r.status; return r.json(); }
+
+/* ===== Fonte: modelli (Open-Meteo e ItaliaMeteo ICON-2I) ===== */
+async function loadModels(){
+  const base = {latitude: pos.lat, longitude: pos.lon, timezone: "auto"};
+  const q = new URLSearchParams({...base,
+    current: "precipitation,temperature_2m,wind_speed_10m,wind_direction_10m,cloud_cover",
+    minutely_15: "precipitation", forecast_minutely_15: 16});
+  const q2 = new URLSearchParams({...base, current: "precipitation", models: "italia_meteo_arpae_icon_2i"});
+  const [a, b] = await Promise.allSettled([getJSON(`${API}?${q}`), getJSON(`${API}?${q2}`)]);
+  if (a.status === "fulfilled"){
+    const c = a.value.current;
+    lastNext = (a.value.minutely_15?.precipitation ?? []).map(v => (v ?? 0) * 4);   // mm/15min → mm/h
+    lastC = c;
+    val.om = Math.max(c.precipitation ?? 0, lastNext[0] ?? 0);
+    Object.assign(live, {wind: c.wind_speed_10m, windDir: c.wind_direction_10m, cloud: c.cloud_cover});
+  } else { val.om = null; say("Dati meteo non disponibili: controlla la connessione."); }
+  val.i2i = b.status === "fulfilled" ? (b.value.current?.precipitation ?? null) : null;
+}
+
+/* ===== Fonte: radar Protezione Civile (rete radar nazionale) ===== */
+let dpcLayer = "radar:sri";      // SRI = intensità di pioggia al suolo in mm/h
+async function loadDPC(){
+  const d = 0.01;                // ~1 km intorno al punto
+  const p = new URLSearchParams({SERVICE:"WMS", VERSION:"1.1.1", REQUEST:"GetFeatureInfo",
+    LAYERS:dpcLayer, QUERY_LAYERS:dpcLayer, INFO_FORMAT:"application/json", SRS:"EPSG:4326",
+    BBOX:[pos.lon-d, pos.lat-d, pos.lon+d, pos.lat+d].join(","), WIDTH:3, HEIGHT:3, X:1, Y:1, FEATURE_COUNT:1});
+  try{
+    const j = await getJSON(`${DPC_WMS}?${p}`);
+    const props = j.features?.[0]?.properties;
+    if (!props) throw 0;
+    const n = Object.values(props).find(v => typeof v === "number");
+    if (n === undefined) throw 0;
+    const mm = n < 0 ? 0 : (dpcLayer === "radar:vmi" ? dbzToMm(n) : n);   // valori negativi = nessun eco
+    val.dpc = Math.round(mm * 10) / 10;
+  }catch{ val.dpc = null; }
+  try{                            // ora dell'ultimo prodotto (solo per l'etichetta)
+    const t = (await getJSON(DPC_API)).lastProducts?.[0]?.time;
+    if (t) dpcTime = new Date(t);
+  }catch{}
+}
+
+/* ===== Fonte: radar RainViewer (lettura del colore nel punto) ===== */
+let frames = [], rvHost = "", dpcTime = null;
+async function loadRV(){
+  try{
+    const d = await getJSON(RV);
+    const past = d.radar?.past ?? [];
+    if (!past.length) throw 0;
+    if (!(frames.length && frames.at(-1).path === past.at(-1).path)){
+      if (map) rvLayers.forEach(l => l && map.removeLayer(l));
+      rvHost = d.host; frames = past; rvLayers = new Array(past.length);
+      $("frame").max = past.length - 1;
+      if (map && radarMode === "rv") showFrame(past.length - 1);
+    }
+  }catch{ val.rv = null; return; }
+  val.rv = await rvAtPoint();
+}
+
+async function rvAtPoint(){
+  const z = 7, n = 2 ** z, la = pos.lat * Math.PI / 180;
+  const fx = (pos.lon + 180) / 360 * n;
+  const fy = (1 - Math.log(Math.tan(la) + 1 / Math.cos(la)) / Math.PI) / 2 * n;
+  const tx = Math.floor(fx), ty = Math.floor(fy);
+  const px = Math.floor((fx - tx) * 256), py = Math.floor((fy - ty) * 256);
+  const img = new Image(); img.crossOrigin = "anonymous";
+  img.src = `${rvHost}${frames.at(-1).path}/256/${z}/${tx}/${ty}/2/0_1.png`;
+  try{ await img.decode(); }catch{ return null; }
+  const cnv = document.createElement("canvas"); cnv.width = cnv.height = 256;
+  const g = cnv.getContext("2d", {willReadFrequently:true}); g.drawImage(img, 0, 0);
+  try{
+    const data = g.getImageData(Math.max(0,px-1), Math.max(0,py-1), 3, 3).data;   // pixel ~1 km a z7
+    let best = 0;
+    for (let i = 0; i < data.length; i += 4) if (data[i+3] > 40) best = Math.max(best, colorToMm(data[i], data[i+1], data[i+2]));
+    return Math.round(best * 10) / 10;
+  }catch{ return null; }
+}
+
+function colorToMm(r, g, b){
+  const mx = Math.max(r,g,b), mn = Math.min(r,g,b), l = (mx + mn) / 510;
+  if (mx - mn < 30) return 0.1;
+  let h = mx === r ? ((g - b) / (mx - mn)) % 6 : mx === g ? (b - r) / (mx - mn) + 2 : (r - g) / (mx - mn) + 4;
+  h = (h * 60 + 360) % 360;
+  if (h >= 170 && h < 260) return 0.3 + (1 - l) * 5;
+  if (h >= 45 && h < 75) return 10;
+  if (h >= 20 && h < 45) return 20;
+  if (h < 20 || h >= 330) return 40;
+  return 60;
+}
+
+/* ===== Fusione delle fonti ===== */
+async function load(){
+  if (!pos) return;
+  await Promise.all([loadModels(), loadDPC(), loadRV()]);
+  const used = SOURCES.find(s => val[s.id] != null);
+  live.mm = used ? val[used.id] : 0;
+  live.src = used ? used.name.split(" · ")[0] : "nessuna fonte";
+  live.used = used?.id;
+  render();
+}
+
+function render(){
+  const mm = live.mm;
+  $("mm").textContent = mm.toFixed(1);
+  $("label").innerHTML = describe(mm) + `<span class="src">fonte: ${live.src}</span>`;
+  const c = lastC;
+  if (c){
+    $("temp").textContent = Math.round(c.temperature_2m) + "°C";
+    $("wind").textContent = Math.round(c.wind_speed_10m) + " km/h " + dirName(c.wind_direction_10m);
+    $("cloud").textContent = c.cloud_cover + "%";
+  }
+  $("updated").textContent = "Aggiornato " + new Date().toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
+  if (lastNext){
+    const max = Math.max(2, ...lastNext);
+    $("bars").innerHTML = lastNext.map(v => `<i style="height:${Math.max(1,v/max*100)}%" title="${v.toFixed(1)} mm/h"></i>`).join("");
+    $("next").textContent = lastNext.slice(0,8).reduce((a,b)=>a+b/4,0).toFixed(1) + " mm";
+  }
+  $("srcs").innerHTML = SOURCES.map(s => {
+    const v = val[s.id];
+    const cls = s.id === live.used ? "used" : v == null ? "off" : "";
+    return `<div class="${cls}"><span>${s.name}${s.id === live.used ? " ✓" : ""}</span><b>${v == null ? "n.d." : v.toFixed(1) + " mm/h"}</b></div>`;
+  }).join("");
+  // Avviso se radar e modelli raccontano cose molto diverse
+  const radar = [val.dpc, val.rv].filter(v => v != null), model = [val.i2i, val.om].filter(v => v != null);
+  let w = "";
+  if (radar.length && model.length){
+    const r = Math.max(...radar), m = Math.max(...model);
+    if (r < 0.2 && m >= 1) w = "I radar non vedono pioggia, i modelli sì: potrebbe arrivare a breve.";
+    else if (r >= 1 && m < 0.2) w = "I radar vedono pioggia che i modelli non prevedono.";
+  }
+  if (radar.length === 2 && Math.abs(radar[0] - radar[1]) >= 3) w = (w ? w + " " : "") + "I due radar differiscono: vale quello della Protezione Civile.";
+  $("warn").textContent = w;
+  if (pos?.name) $("l3b").href = "https://www.3bmeteo.com/meteo/" + slug(pos.name.replace(/^\d{5}\s*/, ""));
+}
+
+/* ===== Posizione e ricerca (CAP o città) ===== */
+async function setPlace(lat, lon, name){
+  pos = {lat, lon, name};
+  $("place").textContent = name || `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+  say("");
+  if (map){ map.setView([lat, lon], 9); placeMarker(); }
+  clearInterval(timer);
+  await load();
+  timer = setInterval(() => { load(); if (map && radarMode === "dpc") refreshDPC(); }, REFRESH_MIN * 60000);
+}
+
+function locate(){
+  if (!navigator.geolocation){ say("GPS non disponibile: cerca un CAP o una città."); return; }
+  say("Rilevo la posizione…");
+  navigator.geolocation.getCurrentPosition(async p => {
+    const {latitude:lat, longitude:lon} = p.coords;
+    let name = "";
+    try{
+      const g = await getJSON(`${REV}?latitude=${lat}&longitude=${lon}&localityLanguage=it`);
+      name = [g.postcode, g.city || g.locality].filter(Boolean).join(" ");
+    }catch{}
+    setPlace(lat, lon, name);
+  }, () => {
+    if (!pos) $("place").textContent = "Posizione non concessa";
+    say("Attiva la posizione oppure cerca un CAP o una città.");
+  }, {enableHighAccuracy:true, timeout:12000, maximumAge:120000});
+}
+
+async function nominatim(params){
+  const p = new URLSearchParams({format:"jsonv2", limit:1, addressdetails:1, "accept-language":"it", ...params});
+  const r = await fetch(`${NOMI}?${p}`);
+  return r.ok ? (await r.json())[0] : null;
+}
+
+async function search(raw){
+  raw = raw.trim(); if (!raw) return;
+  say("Cerco…");
+  const cap = raw.match(/\b\d{5}\b/)?.[0];
+  const city = raw.replace(/\b\d{5}\b/, "").replace(/[,;]/g, " ").replace(/\s+/g, " ").trim();
+  let hit = null;
+  try{
+    if (cap) hit = await nominatim({postalcode: cap, countrycodes: COUNTRY, ...(city && {city})})
+                || await nominatim({postalcode: cap, countrycodes: COUNTRY});
+    else hit = await nominatim({q: city, countrycodes: COUNTRY}) || await nominatim({q: city});
+  }catch{}
+  if (hit){
+    const a = hit.address || {};
+    const town = a.city || a.town || a.village || a.municipality || city || hit.name;
+    return setPlace(+hit.lat, +hit.lon, [a.postcode || cap, town].filter(Boolean).join(" "));
+  }
+  try{
+    const g = (await getJSON(`${GEO}?name=${encodeURIComponent(cap || city)}&count=1&language=it&countryCode=${COUNTRY.toUpperCase()}`)).results?.[0];
+    if (g) return setPlace(g.latitude, g.longitude, [cap, g.name].filter(Boolean).join(" "));
+  }catch{}
+  say("Nessun risultato per “" + raw + "”.");
+}
+
+/* ===== Mappa ===== */
+let map = null, me = null, base = {}, sat = false, radarMode = "dpc", dpcWms = null, dpcErr = 0;
+let rvLayers = [], fi = 0, playT = null;
+
+function initMap(){
+  if (map){ map.invalidateSize(); return; }
+  const c = pos ? [pos.lat, pos.lon] : [45.44, 10.99];
+  map = L.map("map", {zoomControl:false}).setView(c, 9);
+  base.streets = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {maxZoom:19, attribution:"Esri"});
+  base.sat = L.layerGroup([
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {maxZoom:19, attribution:"Esri"}),
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {maxZoom:19})
+  ]);
+  base.streets.addTo(map);
+  L.control.zoom({position:"bottomright"}).addTo(map);
+  map.attributionControl.setPrefix(false);
+  map.attributionControl.addAttribution("Radar: Dipartimento Protezione Civile, RainViewer");
+  placeMarker();
+  setRadar(radarMode);
+}
+
+function placeMarker(){
+  if (!map || !pos) return;
+  if (me) me.setLatLng([pos.lat, pos.lon]);
+  else me = L.circleMarker([pos.lat, pos.lon], {radius:7, color:"#fff", weight:2, fillColor:"#1a73e8", fillOpacity:1}).addTo(map);
+}
+
+function makeDPC(){
+  dpcErr = 0;
+  const l = L.tileLayer.wms(DPC_WMS, {layers:dpcLayer, format:"image/png", transparent:true, version:"1.1.1",
+    tiled:true, opacity:.7, zIndex:10, maxZoom:19});
+  l.on("tileerror", () => {        // se SRI non è disponibile passa alla riflettività VMI
+    if (++dpcErr > 4 && dpcLayer === "radar:sri"){ dpcLayer = "radar:vmi"; refreshDPC(true); }
+  });
+  return l;
+}
+function refreshDPC(rebuild){
+  if (!map) return;
+  if (rebuild || !dpcWms){ if (dpcWms) map.removeLayer(dpcWms); dpcWms = makeDPC().addTo(map); }
+  else dpcWms.setParams({_t: Date.now()});
+  $("when").textContent = (dpcTime ? dpcTime.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"}) + " · " : "") + "Protezione Civile";
+}
+
+function setRadar(mode){
+  radarMode = mode;
+  if (playT) togglePlay();
+  $("radarBtn").textContent = mode === "dpc" ? "Prot. Civile" : "RainViewer";
+  $("frame").hidden = $("play").hidden = mode !== "rv";
+  if (mode === "dpc"){
+    rvLayers.forEach(l => l && l.setOpacity(0));
+    refreshDPC();
+  } else {
+    if (dpcWms){ map.removeLayer(dpcWms); dpcWms = null; }
+    if (frames.length) showFrame(frames.length - 1);
+  }
+}
+
+function rvLayer(i){
+  return rvLayers[i] ??= L.tileLayer(`${rvHost}${frames[i].path}/256/{z}/{x}/{y}/2/1_1.png`,
+    {opacity:0, maxNativeZoom:7, maxZoom:19, zIndex:10}).addTo(map);
+}
+function showFrame(i){
+  fi = i; $("frame").value = i;
+  rvLayers.forEach((l, k) => l && l.setOpacity(k === i ? .75 : 0));
+  rvLayer(i).setOpacity(.75);
+  const t = new Date(frames[i].time * 1000), ago = Math.round((Date.now() - t) / 60000);
+  $("when").textContent = t.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"}) +
+    (i === frames.length - 1 ? " · RainViewer" : ` · ${ago} min fa`);
+}
+function togglePlay(){
+  if (playT){ clearInterval(playT); playT = null; $("play").textContent = "▶"; return; }
+  $("play").textContent = "❚❚";
+  playT = setInterval(() => showFrame((fi + 1) % frames.length), 700);
+}
+function toggleBase(){
+  sat = !sat;
+  map.removeLayer(sat ? base.streets : base.sat);
+  (sat ? base.sat : base.streets).addTo(map);
+  $("layerBtn").textContent = sat ? "Strade" : "Satellite";
+}
+
+/* ===== Viste ===== */
+function setView(v){
+  document.body.dataset.view = v;
+  $("tabRain").setAttribute("aria-pressed", v === "rain");
+  $("tabMap").setAttribute("aria-pressed", v === "map");
+  if (v === "map") initMap();
+  else if (playT) togglePlay();
+}
+
+/* ===== Animazione pioggia (segue live.mm) ===== */
+const cv = $("sky"), ctx = cv.getContext("2d");
+let W, H, DPR, drops = [], splashes = [];
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function resize(){ DPR = Math.min(2, devicePixelRatio || 1); W = cv.width = innerWidth*DPR; H = cv.height = innerHeight*DPR; }
+addEventListener("resize", resize); resize();
+function newDrop(){ const z = Math.random(); return {x: Math.random()*W*1.4 - W*.2, y: -Math.random()*H, z, len:(10+z*22)*DPR, v:(9+z*12)*DPR}; }
+
+function frame(){
+  if (!reduce) requestAnimationFrame(frame);
+  if (document.body.dataset.view !== "rain" || document.hidden) return;
+  const mm = live.mm;
+  const target = mm <= 0 ? 0 : Math.min(1400, Math.round(40 + Math.sqrt(mm)*160)) * (W*H)/(1400*900*DPR*DPR);
+  while (drops.length < target) drops.push(newDrop());
+  if (drops.length > target) drops.length = Math.floor(drops.length - Math.max(1, (drops.length-target)*.05));
+  const rad = (live.windDir + 180) * Math.PI/180;
+  const tilt = Math.sin(rad) * Math.min(live.wind, 60)/60 * .9;
+  const dark = Math.min(1, live.cloud/100*.5 + Math.min(mm,20)/20*.5);
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0, `hsl(210,40%,${14-dark*8}%)`); g.addColorStop(1, `hsl(210,28%,${22-dark*10}%)`);
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+  ctx.lineCap = "round";
+  for (const d of drops){
+    d.y += d.v; d.x += d.v*tilt;
+    ctx.strokeStyle = `rgba(169,200,230,${.15 + d.z*.45})`; ctx.lineWidth = (.6 + d.z*1.1)*DPR;
+    ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - d.len*tilt, d.y - d.len); ctx.stroke();
+    if (d.y > H){
+      if (d.z > .6) splashes.push({x:d.x, y:H - Math.random()*8*DPR, r:0, a:.5});
+      Object.assign(d, newDrop(), {y:-d.len});
+    }
+  }
+  for (let i = splashes.length-1; i >= 0; i--){
+    const s = splashes[i]; s.r += 1.4*DPR; s.a -= .03;
+    if (s.a <= 0){ splashes.splice(i,1); continue; }
+    ctx.strokeStyle = `rgba(169,200,230,${s.a})`; ctx.lineWidth = DPR;
+    ctx.beginPath(); ctx.ellipse(s.x, s.y, s.r, s.r*.3, 0, Math.PI, 2*Math.PI); ctx.stroke();
+  }
+}
+
+/* ===== Avvio ===== */
+$("searchForm").onsubmit = e => { e.preventDefault(); $("city").blur(); search($("city").value); };
+$("gps").onclick = locate;
+$("refresh").onclick = () => { if (!pos) return locate(); load(); if (map && radarMode === "dpc") refreshDPC(); };
+$("tabRain").onclick = () => setView("rain");
+$("tabMap").onclick = () => setView("map");
+$("play").onclick = togglePlay;
+$("frame").oninput = e => { if (playT) togglePlay(); showFrame(+e.target.value); };
+$("layerBtn").onclick = () => map && toggleBase();
+$("radarBtn").onclick = () => map && setRadar(radarMode === "dpc" ? "rv" : "dpc");
+locate();
+frame();
+if (reduce) setInterval(frame, 1000);
+
+if ("serviceWorker" in navigator && !window.Capacitor && location.protocol !== "file:")
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
