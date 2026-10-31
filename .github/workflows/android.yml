@@ -19,19 +19,23 @@ jobs:
       - name: Prepara i file dell'app
         run: |
           mkdir -p www
-          cp index.html manifest.webmanifest sw.js icon-192.png icon-512.png www/
+          cp index.html manifest.webmanifest sw.js icon-192.png icon-512.png splash.png www/
       - run: npm install
       - run: npx cap add android
       - name: Permessi posizione
         run: |
           sed -i 's#</manifest>#    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n</manifest>#' android/app/src/main/AndroidManifest.xml
-      - name: Icona
+      - name: Icona e schermata di avvio
         run: |
+          R=android/app/src/main/res
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-            for f in ic_launcher.png ic_launcher_round.png ic_launcher_foreground.png; do
-              [ -f android/app/src/main/res/mipmap-$d/$f ] && cp icon-512.png android/app/src/main/res/mipmap-$d/$f || true
+            for f in ic_launcher.png ic_launcher_round.png; do
+              [ -f $R/mipmap-$d/$f ] && cp icon-512.png $R/mipmap-$d/$f || true
             done
+            [ -f $R/mipmap-$d/ic_launcher_foreground.png ] && cp icon-fg.png $R/mipmap-$d/ic_launcher_foreground.png || true
           done
+          sed -i 's/#FFFFFF/#0B1622/I' $R/values/ic_launcher_background.xml || true
+          find $R -name 'splash.png' -exec cp splash.png {} \;
       - run: npx cap sync android
       - name: Compila APK
         working-directory: android
