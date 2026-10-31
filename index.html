@@ -68,20 +68,40 @@ details.cmp summary{cursor:pointer;color:var(--muted);font-size:12px;text-transf
 .srcs .off{color:var(--muted)}
 .warn{color:#ffcf5c;font-size:12px}
 .warn:empty{display:none}
+.ext-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ext-row a{display:flex;flex-direction:column;gap:2px;min-width:0;text-decoration:none;color:var(--ink);
+  border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+.ext-row a:hover,.ext-row a:focus-visible{border-color:var(--accent);outline:none}
+.ext-row b{font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ext-row span{color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
 .links{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .links a{color:var(--accent);font-size:12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
 
-.radar{display:grid;gap:8px}
+.top,.bottom,.radar{min-width:0;grid-template-columns:minmax(0,1fr)}
+.head>div:first-child{min-width:0}
+.head .row{flex:0 0 auto}
+.radar{display:grid;gap:10px}
+.ctrls{display:flex;gap:8px}
+.ctrls button{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;padding:9px 6px}
+.ctrls #play{flex:0 0 48px}
+#intro{position:fixed;inset:0;z-index:5000;background:#070e17 url(splash.png) center/cover no-repeat;
+  display:flex;align-items:flex-end;justify-content:center;padding-bottom:max(18vh,env(safe-area-inset-bottom));
+  transition:opacity .7s ease}
+#intro.out{opacity:0;pointer-events:none}
+.intro-name{font-family:var(--f-display);font-weight:300;font-size:clamp(28px,8vw,44px);letter-spacing:.02em;color:var(--ink);opacity:.92}
+@media (prefers-reduced-motion:reduce){#intro{transition:none}}
+.credit{color:var(--muted);font-size:10px;opacity:.8}
 .radar input[type=range]{padding:0;border:0;accent-color:var(--accent)}
 .legend{height:8px;border-radius:4px;background:linear-gradient(90deg,#9be7ff,#3fa9f5,#1565c0,#ffe14d,#ff8c1a,#e53935,#b0127a)}
-.legend-l{display:flex;justify-content:space-between;color:var(--muted);font-size:11px}
-.when{font-variant-numeric:tabular-nums}
+.legend-l{display:flex;justify-content:space-between;gap:6px;color:var(--muted);font-size:11px}
+.when{font-variant-numeric:tabular-nums;font-size:14px}
 .leaflet-control-attribution{font-size:10px}
-.leaflet-bottom.leaflet-right{bottom:190px}
+
 @media (max-width:420px){.stats{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body data-view="rain">
+<div id="intro" aria-hidden="true"><div class="intro-name">Pioggia Live</div></div>
 <div id="map"></div>
 <canvas id="sky"></canvas>
 
@@ -129,24 +149,26 @@ details.cmp summary{cursor:pointer;color:var(--muted);font-size:12px;text-transf
       <summary>Confronto fonti</summary>
       <div class="srcs" id="srcs"></div>
       <div class="links">
-        <a id="l3b" href="https://www.3bmeteo.com" target="_blank" rel="noopener">Apri su 3bMeteo</a>
-        <a href="https://radar.protezionecivile.it" target="_blank" rel="noopener">Radar Protezione Civile</a>
+        <a class="ext" href="https://radar.protezionecivile.it" target="_blank" rel="noopener">Radar Protezione Civile ↗</a>
       </div>
     </details>
+    <div class="ext-row">
+      <a class="ext" id="l3b" href="https://www.3bmeteo.com" target="_blank" rel="noopener"><b>3bMeteo</b><span>previsioni ↗</span></a>
+      <a class="ext" id="lam" href="https://www.meteoam.it" target="_blank" rel="noopener"><b>Aeronautica</b><span>Militare ↗</span></a>
+    </div>
 
     <!-- Vista mappa -->
     <div class="radar maponly">
-      <div class="row" style="justify-content:space-between">
-        <span class="when" id="when">Radar in caricamento…</span>
-        <span class="row">
-          <button id="radarBtn" aria-label="Cambia radar">Prot. Civile</button>
-          <button id="layerBtn" aria-label="Cambia mappa">Satellite</button>
-          <button id="play" aria-label="Riproduci">▶</button>
-        </span>
+      <div class="when" id="when">Radar in caricamento…</div>
+      <div class="ctrls">
+        <button id="radarBtn" aria-label="Cambia radar">P. Civile</button>
+        <button id="layerBtn" aria-label="Cambia mappa">Satellite</button>
+        <button id="play" aria-label="Riproduci">▶</button>
       </div>
       <input type="range" id="frame" min="0" max="0" value="0" aria-label="Momento del radar" hidden>
       <div class="legend"></div>
-      <div class="legend-l"><span>debole</span><span>moderata</span><span>forte</span><span>molto forte</span></div>
+      <div class="legend-l"><span>debole</span><span>moderata</span><span>forte</span><span>intensa</span></div>
+      <div class="credit">Mappe Esri · Radar Protezione Civile, RainViewer</div>
     </div>
   </section>
 </div>
@@ -322,12 +344,24 @@ function render(){
   }
   if (radar.length === 2 && Math.abs(radar[0] - radar[1]) >= 3) w = (w ? w + " " : "") + "I due radar differiscono: vale quello della Protezione Civile.";
   $("warn").textContent = w;
-  if (pos?.name) $("l3b").href = "https://www.3bmeteo.com/meteo/" + slug(pos.name.replace(/^\d{5}\s*/, ""));
+  setExtLinks();
 }
 
+/* ===== Link a 3bMeteo e Aeronautica Militare per la località attuale ===== */
+let townName = "";
+function setExtLinks(){
+  const t = slug(townName || (pos?.name || "").replace(/^\d{5}\s*/, ""));
+  $("l3b").href = t ? `https://www.3bmeteo.com/meteo/${t}` : "https://www.3bmeteo.com";
+  $("lam").href = t ? `https://www.meteoam.it/it/meteo-citta/${t}` : "https://www.meteoam.it";
+}
+// Nell'app Android i link si aprono nel browser del telefono
+if (window.Capacitor) document.querySelectorAll("a.ext").forEach(a => a.removeAttribute("target"));
+
 /* ===== Posizione e ricerca (CAP o città) ===== */
-async function setPlace(lat, lon, name){
+async function setPlace(lat, lon, name, town){
   pos = {lat, lon, name};
+  townName = town || "";
+  setExtLinks();
   $("place").textContent = name || `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
   say("");
   if (map){ map.setView([lat, lon], 9); placeMarker(); }
@@ -341,12 +375,13 @@ function locate(){
   say("Rilevo la posizione…");
   navigator.geolocation.getCurrentPosition(async p => {
     const {latitude:lat, longitude:lon} = p.coords;
-    let name = "";
+    let name = "", town = "";
     try{
       const g = await getJSON(`${REV}?latitude=${lat}&longitude=${lon}&localityLanguage=it`);
-      name = [g.postcode, g.city || g.locality].filter(Boolean).join(" ");
+      town = g.city || g.locality || "";
+      name = [g.postcode, town].filter(Boolean).join(" ");
     }catch{}
-    setPlace(lat, lon, name);
+    setPlace(lat, lon, name, town);
   }, () => {
     if (!pos) $("place").textContent = "Posizione non concessa";
     say("Attiva la posizione oppure cerca un CAP o una città.");
@@ -373,11 +408,11 @@ async function search(raw){
   if (hit){
     const a = hit.address || {};
     const town = a.city || a.town || a.village || a.municipality || city || hit.name;
-    return setPlace(+hit.lat, +hit.lon, [a.postcode || cap, town].filter(Boolean).join(" "));
+    return setPlace(+hit.lat, +hit.lon, [a.postcode || cap, town].filter(Boolean).join(" "), town);
   }
   try{
     const g = (await getJSON(`${GEO}?name=${encodeURIComponent(cap || city)}&count=1&language=it&countryCode=${COUNTRY.toUpperCase()}`)).results?.[0];
-    if (g) return setPlace(g.latitude, g.longitude, [cap, g.name].filter(Boolean).join(" "));
+    if (g) return setPlace(g.latitude, g.longitude, [cap, g.name].filter(Boolean).join(" "), g.name);
   }catch{}
   say("Nessun risultato per “" + raw + "”.");
 }
@@ -389,16 +424,13 @@ let rvLayers = [], fi = 0, playT = null;
 function initMap(){
   if (map){ map.invalidateSize(); return; }
   const c = pos ? [pos.lat, pos.lon] : [45.44, 10.99];
-  map = L.map("map", {zoomControl:false}).setView(c, 9);
+  map = L.map("map", {zoomControl:false, attributionControl:false}).setView(c, 9);
   base.streets = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {maxZoom:19, attribution:"Esri"});
   base.sat = L.layerGroup([
     L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {maxZoom:19, attribution:"Esri"}),
     L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {maxZoom:19})
   ]);
   base.streets.addTo(map);
-  L.control.zoom({position:"bottomright"}).addTo(map);
-  map.attributionControl.setPrefix(false);
-  map.attributionControl.addAttribution("Radar: Dipartimento Protezione Civile, RainViewer");
   placeMarker();
   setRadar(radarMode);
 }
@@ -428,7 +460,7 @@ function refreshDPC(rebuild){
 function setRadar(mode){
   radarMode = mode;
   if (playT) togglePlay();
-  $("radarBtn").textContent = mode === "dpc" ? "Prot. Civile" : "RainViewer";
+  $("radarBtn").textContent = mode === "dpc" ? "P. Civile" : "RainViewer";
   $("frame").hidden = $("play").hidden = mode !== "rv";
   if (mode === "dpc"){
     rvLayers.forEach(l => l && l.setOpacity(0));
@@ -512,6 +544,7 @@ function frame(){
 }
 
 /* ===== Avvio ===== */
+setTimeout(() => { const i = $("intro"); i.classList.add("out"); setTimeout(() => i.remove(), 800); }, 1600);
 $("searchForm").onsubmit = e => { e.preventDefault(); $("city").blur(); search($("city").value); };
 $("gps").onclick = locate;
 $("refresh").onclick = () => { if (!pos) return locate(); load(); if (map && radarMode === "dpc") refreshDPC(); };
