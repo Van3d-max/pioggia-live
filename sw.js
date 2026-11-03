@@ -1,5 +1,5 @@
 // Cache dell'interfaccia: l'app si apre anche offline, i dati meteo arrivano sempre dalla rete
-const CACHE = "pioggia-v8";
+const CACHE = "pioggia-v10";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "splash.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener("activate", e => {
